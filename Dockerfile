@@ -1,9 +1,11 @@
+# syntax = docker/dockerfile:1.6
+
 FROM ubuntu:latest as base
 
 RUN --mount=type=cache,target=/memgpt/.cache,sharing=locked \
     useradd -mUs /bin/bash -d /memgpt memgpt \
-    && mkdir -p /memgpt/.memgpt /memgpt/.local \
-    && chown -R memgpt:memgpt /memgpt /memgpt/.memgpt /memgpt/.cache
+    && mkdir -p /memgpt/.memgpt /memgpt/.local /memgpt/.rustup \
+    && chown -R memgpt:memgpt /memgpt /memgpt/.memgpt /memgpt/.cache /memgpt/.rustup
 
 ENV PATH=/memgpt/.local/bin:/memgpt/.cargo/bin:$PATH
 
@@ -25,24 +27,28 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         curl \
         tini \
         pipx \
+        cmake \
     && ln -s /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-
+# Make our user own the caches.
 RUN --mount=type=cache,target=/memgpt/.cache,sharing=locked \
-    chown -R memgpt:memgpt /memgpt/.cache \
+    --mount=type=cache,target=/memgpt/.pip,sharing=locked \
+    --mount=type=cache,target=/memgpt/.cargo,sharing=locked \
+    chown -R memgpt:memgpt /memgpt/.cache /memgpt/.pip /memgpt/.cargo \
     && chown -R memgpt:memgpt /memgpt
 
 WORKDIR /memgpt
 USER memgpt
 ENV HOME=/memgpt
 
-RUN --mount=type=tmpfs,target=/memgpt/.rustup/tmp \
+RUN --mount=type=cache,target=/memgpt/.cargo,sharing=locked \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > /tmp/rustup-install \
     && bash /tmp/rustup-install -y \
     && rm /tmp/rustup-install
 
 RUN --mount=type=cache,target=/memgpt/.cache,sharing=locked \
+    --mount=type=cache,target=/memgpt/.cargo,sharing=locked \
     pipx install poetry
 RUN --mount=type=cache,target=/memgpt/.cache,sharing=locked \
     python3 -m venv /memgpt/.venv \
@@ -51,9 +57,10 @@ RUN --mount=type=cache,target=/memgpt/.cache,sharing=locked \
 COPY requirements.txt .
 
 RUN --mount=type=cache,target=/memgpt/.cache,sharing=locked \
+    --mount=type=cache,target=/memgpt/.pip,sharing=locked \
     pip install --upgrade pip \
     && pip install -r requirements.txt \
-    && pip install pgvector psycopg
+    && pip install pgvector psycopg pg8000
 
 FROM base as build
 

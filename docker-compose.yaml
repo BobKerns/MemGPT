@@ -1,0 +1,72 @@
+# Use postgres/example user/password credentials
+version: '3.1'
+
+services:
+
+  db:
+    image: db
+    container_name: db
+    build: db
+    restart: always
+    environment:
+      POSTGRES_PASSWORD_FILE: /var/run/secrets/admin-password
+      POSTGRES_USER_FILE: /var/run/secrets/admin-user
+      POSTGRES_DB_FILE: /var/run/secrets/admin-db
+    ports:
+      - 0.0.0.0:5432:5432
+    volumes:
+      - memgpt_db:/var/lib/postgresql/data
+    secrets:
+      - admin-user
+      - admin-password
+      - admin-db
+      - memgpt-user
+      - memgpt-password
+      - memgpt-db
+
+  adminer:
+    image: adminer
+    container_name: adminer
+    restart: always
+    ports:
+      - 8080:8080
+
+  memgpt:
+    image: memgpt
+    container_name: memgpt
+    build: .
+    entrypoint: /bin/sleep infinity
+    restart: always
+    volumes:
+      - memgpt:/memgpt/.memgpt
+    secrets:
+      # Not used yet, but memgpt confiure could use them to construct the URL
+      - memgpt-user
+      - memgpt-password
+      - memgpt-db
+
+    depends_on:
+      - db
+
+volumes:
+  memgpt_db:
+    name: memgpt_db
+  memgpt:
+    name: memgpt
+
+secrets:
+  # Credentials for the superuser.
+  # See db/README.md for how to generate these.
+  admin-user:
+    file: "${PG_SECRETS:-$HOME/.memgpt/secrets/postgres}/admin-user"
+  admin-password:
+    file: "${PG_SECRETS:-$HOME/.memgpt/secrets/postgres}/admin-password"
+  admin-db:
+    file: "${PG_SECRETS:-$HOME/.memgpt/secrets/postgres}/admin-db"
+  # Credentials for the memgpt user.
+  memgpt-user:
+    file: "${PG_SECRETS:-$HOME/.memgpt/secrets/postgres}/memgpt-user"
+  memgpt-password:
+    file: "${PG_SECRETS:-$HOME/.memgpt/secrets/postgres}/memgpt-password"
+  memgpt-db:
+    file: "${PG_SECRETS:-$HOME/.memgpt/secrets/postgres}/memgpt-db"

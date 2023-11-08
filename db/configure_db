@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+
+dir="$(cd "$(dirname "$0")" || exit; pwd)"
+
+secrets="${MEMGPT_SECRETS:-$HOME/.memgpt/secrets}/postgres"
+mkdir -p "${secrets}"
+chmod 700 "${secrets}" "$(dirname "${secrets}")"
+chmod go-w "$(dirname "$(dirname "${secrets}")")"
+
+hashpw() {
+    echo -n "$1" | python3 "$dir/scram-sha-256.py"
+}
+
+# Default to any previous values, if they exist,
+# except for passwords, which have been hashed.
+if [ -r "${secrets}/admin_user" ]; then
+    admin_user="$(cat "${secrets}/admin-user")"
+else
+    admin_user='admin'
+fi
+if [ -r "${secrets}/admin_db" ]; then
+    admin_db="$(cat "${secrets}/admin-db")"
+else
+    admin_db="${admin_user}"
+fi
+if [ -r "${secrets}/memgpt_user" ]; then
+    memgpt_user="$(cat "${secrets}/memgpt-user")"
+else
+    memgpt_user='memgpt'
+fi
+if [ -r "${secrets}/memgpt_db" ]; then
+    memgpt_db="$(cat "${secrets}/memgpt-db")"
+else
+    memgpt_db="${memgpt_user}"
+fi
+
+
+cat <<EOF
+This script will configure the Postgres database for the MemGPT system.
+
+First, let's choose the admin user.
+EOF
+
+read -rp "Enter the admin username: [$admin_user]" admin_user
+admin_user="${admin_user:-admin}"
+echo -n "${admin_user}" > "${secrets}/admin-user"
+admin_password="${admin_user}"
+read -rp "Enter the admin password: [$admin_password]" admin_password
+admin_password="${admin_password:-${admin_user}}"
+# Looks like we have to do the admin password in cleartext? Sigh.
+hashpw "${admin_password}" >"${secrets}/admin-password"
+read -rp "Enter the name for the admin database: [$admin_db]" admin_db
+admin_db="${admin_db:-${admin_user}}"
+echo -n "${admin_db}" > "${secrets}/admin-db"
+
+cat <<EOF
+
+Now, let's choose the database user. This is the user
+that the MemGPT system will use to connect to the database.
+EOF
+
+read -rp "Enter the database username: [$memgpt_user]" memgpt_user
+memgpt_user="${memgpt_user:-memgpt}"
+echo -n "${memgpt_user}" > "${secrets}/memgpt-user"
+memgpt_password="${memgpt_user}"
+read -rp "Enter the database password: [$memgpt_password]" memgpt_password
+memgpt_password="${memgpt_password:-${memgpt_user}}"
+hashpw "${memgpt_password}" >"${secrets}/memgpt-password"
+
+cat <<EOF
+Finally, let's choose a name for the database used.
+EOF
+
+read -rp "Enter the database name: [$memgpt_db]" memgpt_db
+echo -n "${memgpt_db:-memgpt}" > "${secrets}/memgpt-db"
+memgpt_db="${memgpt_db:-memgpt}"
+
+cat <<EOF
+The database has been configured. You can now run the following command
+to start the database and MemGPT:
+
+    docker compose up -d
+
+(Note, these values only take effect when the database is first created.
+If you want to change them later, you will need to delete the database.
+You can do this by running:
+
+    docker compose down
+    docker container rm db
+    docker volume rm memgpt_db
+    docker compose up -d
+
+To configure MemGPT, run:
+
+        docker exec -it memgpt memgpt configure
+
+and follow the prompts. Choose the 'postgres' option when prompted
+for the archival memory type.
+
+The database connection string to use is:
+
+postgresql+pg8000://${memgpt_user}:${memgpt_password}@db/${memgpt_db}
+
+EOF
